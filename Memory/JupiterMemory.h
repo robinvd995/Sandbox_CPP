@@ -17,177 +17,309 @@ typedef int uint;
 
 namespace Jupiter {
 
+	/// <summary>
+	/// A control block for managing pointers
+	/// The strong reference counter is in control of the data, meaning that when the strong ref counter hits 0 the data will be deleted
+	/// The weak reference counter is in control of the control block itself, meaning that when the weak ref counter hits 0, the block will be deleted
+	/// A strong reference is always a weak reference, but a weak reference is never a strong reference
+	/// </summary>
 	class ptr_control_block {
 
-	public:
-		ptr_control_block() { std::cout << "Control Block Created!" << std::endl; }
-		~ptr_control_block() { std::cout << "Control Block Destroyed!" << std::endl; }
+	private:
+		ptr_control_block() noexcept { std::cout << "Control Block Created!" << std::endl; }
+		~ptr_control_block() noexcept { std::cout << "Control Block Destroyed!" << std::endl; }
 
+	public:
 		/// <summary>
 		/// Creates a new control block object
+		/// This sets the counter for StrongReference to 1
+		/// This sets the counter for WeakReference to 1
+		/// This sets the valid flag to true
 		/// </summary>
-		/// <returns>A pointer to the now object created</returns>
-		static ptr_control_block* create();
+		/// <returns>A pointer to the newly created control block</returns>
+		static ptr_control_block* create() noexcept;
 
 		/// <summary>
-		/// Releases a reference to the control block
+		/// Releases a weak reference to the control block
+		/// If the WeakReference counter is 0 after the decrement, the control block will be deleted
+		/// Throws an std::out_of_range exception when the weak ref counter is equal to the strong ref counter
 		/// </summary>
 		/// <param name="controlBlock">The control block the where a reference needs to be released</param>
-		static void release(ptr_control_block* controlBlock);
+		static void releaseWeak(ptr_control_block* controlBlock);
 
 		/// <summary>
-		/// Invalidates the control block, setting the m_Valid flag to false;
+		/// Releases a strong and weak reference to the control block
+		/// If the StrongReference counter is 0 after the decrement, the data will be deleted and the valid flag will be set to false
+		/// If the WeakReference counter is 0 after the decrement, the control block will be deleted
+		/// Throws an std::out_of_range exception when the strong ref counter is 0
 		/// </summary>
-		inline void invalidate() { m_Valid = false; }
+		/// <param name="controlBlock">The control block the where a reference needs to be released</param>
+		/// <returns>True if the strong reference counter is 0 after the decrement</returns>
+		static bool releaseStrong(ptr_control_block* controlBlock);
+
+		/// <summary>
+		/// Increments the weak reference counter by 1
+		/// </summary>
+		/// <param name="controlBlock">The control block where the weak reference need to be incremented</param>
+		static void incrementWeak(ptr_control_block* controlBlock) noexcept;
+
+		/// <summary>
+		/// Incremenets the strong and weak reference counter by 1
+		/// </summary>
+		/// <param name="controlBlock">The control block where the strong and weak reference need to be incremented</param>
+		static void incrementStrong(ptr_control_block* controlBlock) noexcept;
 
 		/// <summary>
 		/// Checks if the current pointer that this block controls is still valid
 		/// </summary>
 		/// <returns>True if the pointer is still valid</returns>
-		inline bool isValid() { return m_Valid; }
+		inline bool isValid() noexcept { return m_Valid; }
 
-	public:
-		uint m_ReferenceCount = 0;
-		bool m_Valid = false;
+	private:
+		uint m_StrongReferenceCount = 0;		// Strong reference count is how many owners there are of this pointer
+		uint m_WeakReferenceCount = 0;			// Weak reference count is how many references are there to this pointer
+		bool m_Valid = false;					// Flag depending wether or not the control block points to valid data or not
 	};
 
 	/// <summary>
-	/// A reference pointer object pointing to data but does not control it
+	/// 
 	/// </summary>
-	/// <typeparam name="T">The type of the data</typeparam>
+	/// <typeparam name="T"></typeparam>
 	template<typename T>
-	class ptr_reference {
-
-	public:
-		// Only acceptable constructor is the one where a data pointer is given to the object
-		ptr_reference(T* data, ptr_control_block* controlBlock) : 
-			m_ReferencedData(data), 
-			m_ControlBlock(controlBlock) 
-		{
-			m_ControlBlock->m_ReferenceCount++;
-			std::cout << "ptr_reference argument constructor called" << std::endl;
-		}
-
-		ptr_reference(const ptr_reference<T>& other) : 
-			m_ReferencedData(other.m_ReferencedData), 
-			m_ControlBlock(other.m_ControlBlock) 
-		{
-			m_ControlBlock->m_ReferenceCount++; 
-			std::cout << "ptr_reference copy constructor called" << std::endl;
-		}
-
-	public:
-		ptr_reference() { std::cout << "ptr_reference constructor called" << std::endl; }
-		~ptr_reference() { ptr_control_block::release(m_ControlBlock); std::cout << "ptr_reference destructor called" << std::endl; }
-
-		/// <summary>
-		/// Checks if the reference is valid
-		/// This means that the control block != nullptr and the control block is valid aswell
-		/// </summary>
-		/// <returns>true if both the control block is not nullptr and the block is valid</returns>
-		bool isValid() { return (m_ControlBlock) && (m_ControlBlock->isValid()); }
-
-	public:
-		// Operator used to acces a const of the raw pointer data.
-		// since references should not modify the data the return type is defined as const
-		const T* operator->() const { return m_ReferencedData; }
+	class ptr_owner {
 
 	private:
-		T* m_ReferencedData = nullptr;
-		ptr_control_block* m_ControlBlock = nullptr;
-	};
-
-	/// <summary>
-	/// Wrapper for a pointer that is owned by a single entity
-	/// </summary>
-	/// <typeparam name="T">The type of the data</typeparam>
-	template<typename T>
-	class ptr_owned {
-
-	private:
-		// Only acceptable constructor is the one where a data pointer is given to the object
-		ptr_owned(T* data) : m_Data(data) {
+		// Argument constructor, only constructor allowed for creating a control block
+		ptr_owner(T* data) : m_Data(data) {
+			// Create the control block
 			m_ControlBlock = ptr_control_block::create();
-			std::cout << "ptr_owned argument constructor called" << std::endl;
 		}
 
 	public:
-		// Delete default constructor
-		ptr_owned() = delete;
+		// Default empty constructor, data and control block are nullptrs
+		ptr_owner() : m_Data(nullptr), m_ControlBlock(nullptr) {}
 
-		// Delete copy constructor
-		ptr_owned(const ptr_owned<T>& other) = delete;
+		// Copy constructor, delete because only 1 pointer owner is allowed to control the data
+		ptr_owner(const ptr_owner<T>& other) = delete;
 
 		// Move constructor
-		ptr_owned(ptr_owned<T>&& other) noexcept : 
-			m_Data(std::move(other.m_Data)), 
-			m_ControlBlock(std::move(other.m_ControlBlock)) 
-		{ 
-			m_ControlBlock->m_ReferenceCount++; 
-			std::cout << "ptr_owned move constructor called" << std::endl;
+		ptr_owner(ptr_owner<T>&& other) noexcept : m_Data(std::move(other.m_Data)), m_ControlBlock(std::move(other.m_ControlBlock)) {
+			// increment the control block strong ref by 1, 
+			// since the destructor is called after the move is complete the ref counter should still be 1
+			// ??? Maybe there is a more ellegant solution for this ???
+			ptr_control_block::incrementStrong(m_ControlBlock);
 		}
 
-		// Delete pointer data in destructor, also invalidate the control block and decrement the reference counter of said control block
-		~ptr_owned() { ptr_control_block::release(m_ControlBlock); std::cout << "ptr_owned destructor called" << std::endl; }
+		// Destructor
+		~ptr_owner() {
+			// Release the reference to this pointer object, resulting in deleting the data controlled by this if strong ref = 0
+			// Calling relrease strong returns true if the strong ref counter is 0, therefore we must delete the data
+			if (ptr_control_block::releaseStrong(m_ControlBlock))
+				delete m_Data;
+		}
 
 		// Default move assignment operator
-		ptr_owned<T>& operator=(ptr_owned<T>&&) = default;
+		// ??? Maybe this operator can be deleted ???
+		ptr_owner<T>& operator=(ptr_owner<T>&&) = default;
 
-		// Delete copy assignment operator
-		ptr_owned<T>& operator=(ptr_owned<T>&) = delete;
+		// Delete copy assignment operator, since we don't want to make copies of this pointer
+		ptr_owner<T>& operator=(ptr_owner<T>&) = delete;
 
-	public:
 		// Operator used to acces the raw pointer data
 		T* operator->() const { return m_Data; }
-
-	public:
-		/// <summary>
-		/// Grabs a reference to this pointer.
-		/// A reference is not in control of the data, and can therefore never delete the data or invalidate it
-		/// </summary>
-		/// <returns></returns>
-		inline ptr_reference<T> grabReference() {
-			return ptr_reference<T>(m_Data, m_ControlBlock);
-		}
-
-		/// <summary>
-		/// Invalidates the pointer object/ptr_control_block and deletes the data.
-		/// The control block will not be deleted when calling this.
-		/// All references derived from this pointer still hold the control block data.
-		/// However the references should always check if the control block is still valid before using the data.
-		/// This method always needs to be called, otherwise the data that this is pointing towards will never be deleted!
-		/// </summary>
-		void invalidate() {
-			m_ControlBlock->invalidate();
-			ptr_control_block::release(m_ControlBlock);
-			delete m_Data;
-		}
 
 	private:
 		T* m_Data;
 		ptr_control_block* m_ControlBlock;
 
-		friend class JupiterMemory;
+		friend class PointerCreator;
 	};
 
 	/// <summary>
-	/// A pointer object that shares the ownership of the data with other objects
+	/// Class used to instantiate pointer objects
+	/// Class should never be instantiated
 	/// </summary>
-	/// <typeparam name="T">The type of the data</typeparam>
-	template<typename T>
-	class ptr_shared {
-
-	public:
-
-	};
-
-	class JupiterMemory {
+	class PointerCreator {
+		
+	private:
+		PointerCreator() = delete;							// Constructor deletion
+		~PointerCreator() = delete;							// Destructor deletion
+		PointerCreator(const PointerCreator&) = delete;		// Constructor deletion
+		PointerCreator(const PointerCreator&&) = delete;	// Constructor deletion
 
 	public:
 		template<typename T, typename ...Args>
-		static ptr_owned<T> createOwned(Args&&... args) {
+		static ptr_owner<T> createPtrOwner(Args&&... args) {
 			T* data = new T(std::forward<Args>(args)...);
-			return ptr_owned<T>(data);
+			return ptr_owner<T>(data);
 		}
 	};
+
+
+//	/// <summary>
+//	/// A reference pointer object pointing to data but does not control it
+//	/// </summary>
+//	/// <typeparam name="T">The type of the data</typeparam>
+//	template<typename T>
+//	class ptr_reference {
+//
+//	public:
+//		// Only acceptable constructor is the one where a data pointer is given to the object
+//		ptr_reference(T* data, ptr_control_block* controlBlock) : 
+//			m_ReferencedData(data), 
+//			m_ControlBlock(controlBlock) 
+//		{
+//			m_ControlBlock->m_ReferenceCount++;
+//			std::cout << "ptr_reference argument constructor called" << std::endl;
+//		}
+//
+//		ptr_reference(const ptr_reference<T>& other) : 
+//			m_ReferencedData(other.m_ReferencedData), 
+//			m_ControlBlock(other.m_ControlBlock) 
+//		{
+//			m_ControlBlock->m_ReferenceCount++; 
+//			std::cout << "ptr_reference copy constructor called" << std::endl;
+//		}
+//
+//	public:
+//		ptr_reference() { std::cout << "ptr_reference constructor called" << std::endl; }
+//		~ptr_reference() { ptr_control_block::release(m_ControlBlock); std::cout << "ptr_reference destructor called" << std::endl; }
+//
+//		/// <summary>
+//		/// Checks if the reference is valid
+//		/// This means that the control block != nullptr and the control block is valid aswell
+//		/// </summary>
+//		/// <returns>true if both the control block is not nullptr and the block is valid</returns>
+//		bool isValid() { return (m_ControlBlock) && (m_ControlBlock->isValid()); }
+//
+//	public:
+//		// Operator used to acces a const of the raw pointer data.
+//		// since references should not modify the data the return type is defined as const
+//		const T* operator->() const { return m_ReferencedData; }
+//
+//	private:
+//		T* m_ReferencedData = nullptr;
+//		ptr_control_block* m_ControlBlock = nullptr;
+//	};
+//
+//	/// <summary>
+//	/// Wrapper for a pointer that is owned by a single entity
+//	/// </summary>
+//	/// <typeparam name="T">The type of the data</typeparam>
+//	template<typename T>
+//	class ptr_owned {
+//
+//	private:
+//		// Only acceptable constructor is the one where a data pointer is given to the object
+//		ptr_owned(T* data) : m_Data(data) {
+//			m_ControlBlock = ptr_control_block::create();
+//			std::cout << "ptr_owned argument constructor called" << std::endl;
+//		}
+//
+//	public:
+//		// Delete default constructor
+//		ptr_owned() = delete;
+//
+//		// Delete copy constructor
+//		ptr_owned(const ptr_owned<T>& other) = delete;
+//
+//		// Move constructor
+//		ptr_owned(ptr_owned<T>&& other) noexcept : 
+//			m_Data(std::move(other.m_Data)), 
+//			m_ControlBlock(std::move(other.m_ControlBlock)) 
+//		{
+//			m_ControlBlock->m_ReferenceCount++; 
+//			std::cout << "ptr_owned move constructor called" << std::endl;
+//		}
+//
+//		// Delete pointer data in destructor, also invalidate the control block and decrement the reference counter of said control block
+//		~ptr_owned() { ptr_control_block::release(m_ControlBlock); std::cout << "ptr_owned destructor called" << std::endl; }
+//
+//		// Default move assignment operator
+//		ptr_owned<T>& operator=(ptr_owned<T>&&) = default;
+//
+//		// Delete copy assignment operator
+//		ptr_owned<T>& operator=(ptr_owned<T>&) = delete;
+//
+//	public:
+//		// Operator used to acces the raw pointer data
+//		T* operator->() const { return m_Data; }
+//
+//	public:
+//		/// <summary>
+//		/// Grabs a reference to this pointer.
+//		/// A reference is not in control of the data, and can therefore never delete the data or invalidate it
+//		/// </summary>
+//		/// <returns></returns>
+//		inline ptr_reference<T> grabReference() {
+//			return ptr_reference<T>(m_Data, m_ControlBlock);
+//		}
+//
+//		/// <summary>
+//		/// Invalidates the pointer object/ptr_control_block and deletes the data.
+//		/// The control block will not be deleted when calling this.
+//		/// All references derived from this pointer still hold the control block data.
+//		/// However the references should always check if the control block is still valid before using the data.
+//		/// This method always needs to be called, otherwise the data that this is pointing towards will never be deleted!
+//		/// </summary>
+//		void invalidate() {
+//			m_ControlBlock->invalidate();
+//			ptr_control_block::release(m_ControlBlock);
+//			delete m_Data;
+//		}
+//
+//	private:
+//		T* m_Data;
+//		ptr_control_block* m_ControlBlock;
+//
+//		friend class JupiterMemory;
+//	};
+//
+//	/// <summary>
+//	/// A pointer object that shares the ownership of the data with other objects
+//	/// </summary>
+//	/// <typeparam name="T">The type of the data</typeparam>
+//	template<typename T>
+//	class ptr_shared {
+//
+//	private:
+//		// Argument constructor, only acceptable constructor to create a new control block
+//		ptr_shared(T* data) : m_SharedData(data) {
+//			m_ControlBlock = ptr_control_block::create();
+//			m_ControlBlock->m_ReferenceCount++;
+//			m_ControlBlock->m_Valid = true;
+//		}
+//
+//	public:
+//		// Default contructor
+//		ptr_shared() = default;
+//
+//		// Destructor
+//		~ptr_shared() {
+//			ptr_control_block::release(m_ControlBlock);
+//		}
+//
+//	private:
+//		T* m_SharedData;
+//		ptr_control_block* m_ControlBlock;
+//
+//		friend class JupiterMemory;
+//	};
+//
+//	class JupiterMemory {
+//
+//	public:
+//		template<typename T, typename ...Args>
+//		static ptr_owned<T> createOwned(Args&&... args) {
+//			T* data = new T(std::forward<Args>(args)...);
+//			return ptr_owned<T>(data);
+//		}
+//
+//		template<typename T, typename ...Args>
+//		static ptr_shared<T> createShared(Args&&... args) {
+//			T* data = new T(std::forward<Args>(args)...);
+//			return ptr_shared<T>(data);
+//		}
+//	};
+//
 }
