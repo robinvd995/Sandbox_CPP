@@ -86,6 +86,72 @@ namespace Jupiter {
 	/// </summary>
 	/// <typeparam name="T"></typeparam>
 	template<typename T>
+	class ptr_reference {
+
+	private:
+		// Only acceptable contructor for creating a new reference
+		ptr_reference(T* data, ptr_control_block* ctrlBlock) : m_ReferencedData(data), m_ControlBlock(ctrlBlock) {
+			// A new reference is created, increment the weak ref counter
+			ptr_control_block::incrementWeak(m_ControlBlock);
+		}
+
+	public:
+		// Default constructor
+		ptr_reference() : m_ReferencedData(nullptr), m_ControlBlock(nullptr) {}
+
+		// Destructor
+		~ptr_reference() {
+			// A reference is released, decrement the weak ref counter
+			ptr_control_block::releaseWeak(m_ControlBlock);
+		}
+
+		// Copy constructor
+		ptr_reference(const ptr_reference<T>& other) : m_ReferencedData(other->m_ReferencedData), m_ControlBlock(other->m_ControlBlock) {
+			// A copy of the reference is made, increment the weak ref counter
+			ptr_control_block::incrementWeak(m_ControlBlock);
+		}
+
+		// Move constructor, the move constructor should generally not be called, use the copy constructor instead
+		// May be deprecated later
+		ptr_reference(ptr_reference<T>&& other) : m_ReferencedData(std::move(other.m_ReferencedData)), m_ControlBlock(std::move(other->m_ControlBlock)) {
+			// A new instance of the reference is made, increment the weak ref counter
+			ptr_control_block::incrementWeak(m_ControlBlock);
+		}
+
+		// Copy assignment operator
+		ptr_reference<T>& operator=(ptr_reference<T>& other) {
+			// Copy member variables
+			m_ReferencedData = other.m_ReferencedData;
+			m_ControlBlock = other.m_ControlBlock;
+
+			// A copy is made, increment the weak ref counter
+			ptr_control_block::incrementWeak();
+		}
+
+		// Move assignment operator, this operator should generally not be called, use the copy assignment operator instead
+		// May be deperecated later
+		ptr_reference<T>& operator=(ptr_reference<T>&& other) {
+			// Move member variables
+			m_ReferencedData = std::move(other.m_ReferencedData);
+			m_ControlBlock = std::move(other.m_ControlBlock);
+
+			// A new instance is made, increment the weak ref counter
+			ptr_control_block::incrementWeak();
+		}
+
+		// Operator used to acces the raw pointer data
+		T* operator->() const { return m_ReferencedData; }
+
+	private:
+		T* m_ReferencedData;
+		ptr_control_block* m_ControlBlock;
+	};
+
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <typeparam name="T"></typeparam>
+	template<typename T>
 	class ptr_owner {
 
 	private:
@@ -108,19 +174,26 @@ namespace Jupiter {
 			// since the destructor is called after the move is complete the ref counter should still be 1
 			// ??? Maybe there is a more ellegant solution for this ???
 			ptr_control_block::incrementStrong(m_ControlBlock);
+			std::cout << "Move Constructor!" << std::endl;
 		}
 
 		// Destructor
 		~ptr_owner() {
 			// Release the reference to this pointer object, resulting in deleting the data controlled by this if strong ref = 0
 			// Calling relrease strong returns true if the strong ref counter is 0, therefore we must delete the data
+			std::cout << "Destructor!" << std::endl;
 			if (ptr_control_block::releaseStrong(m_ControlBlock))
 				delete m_Data;
 		}
 
-		// Default move assignment operator
-		// ??? Maybe this operator can be deleted ???
-		ptr_owner<T>& operator=(ptr_owner<T>&&) = default;
+		// Move assignment operator
+		ptr_owner<T>& operator=(ptr_owner<T>&& other) noexcept {
+			m_Data = std::move(other.m_Data);
+			m_ControlBlock = std::move(other.m_ControlBlock);
+			ptr_control_block::incrementStrong(m_ControlBlock);
+			std::cout << "Move assignment operator" << std::endl;
+			return *this;
+		}
 
 		// Delete copy assignment operator, since we don't want to make copies of this pointer
 		ptr_owner<T>& operator=(ptr_owner<T>&) = delete;
@@ -136,22 +209,64 @@ namespace Jupiter {
 	};
 
 	/// <summary>
+	/// 
+	/// </summary>
+	/// <typeparam name="T"></typeparam>
+	template<typename T>
+	class ptr_shared {
+
+	};
+
+	/// <summary>
 	/// Class used to instantiate pointer objects
 	/// Class should never be instantiated
 	/// </summary>
 	class PointerCreator {
 		
 	private:
-		PointerCreator() = delete;							// Constructor deletion
-		~PointerCreator() = delete;							// Destructor deletion
-		PointerCreator(const PointerCreator&) = delete;		// Constructor deletion
-		PointerCreator(const PointerCreator&&) = delete;	// Constructor deletion
+		PointerCreator() = delete;								// Constructor deletion
+		~PointerCreator() = delete;								// Destructor deletion
+		PointerCreator(const PointerCreator&) = delete;			// Constructor deletion
+		PointerCreator(const PointerCreator&&) = delete;		// Constructor deletion
+		PointerCreator& operator=(PointerCreator&) = delete;	// Delete copy assignment operator
+		PointerCreator& operator=(PointerCreator&&) = delete;	// Delete move assignment operator
 
 	public:
+		/// <summary>
+		/// 
+		/// </summary>
 		template<typename T, typename ...Args>
 		static ptr_owner<T> createPtrOwner(Args&&... args) {
 			T* data = new T(std::forward<Args>(args)...);
 			return ptr_owner<T>(data);
+		}
+
+		template<typename T, typename ...Args>
+		static ptr_shared<T> createPtrShared(Args&&... args) {
+			T* data = new T(std::forward<Args>(args)...);
+			return ptr_shared<T>();
+		}
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="ptr"></param>
+		/// <returns></returns>
+		template<typename T>
+		static ptr_reference<T> grabPtrReference(ptr_owner<T> ptr) {
+			return ptr_reference<T>(ptr.m_Data, ptr.m_ControlBlock);
+		}
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="ptr"></param>
+		/// <returns></returns>
+		template<typename T>
+		static ptr_reference<T> grabPtrReference(ptr_shared<T> ptr) {
+			return ptr_reference<T>(ptr.m_Data, ptr.m_ControlBlock);
 		}
 	};
 

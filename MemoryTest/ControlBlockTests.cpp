@@ -12,6 +12,17 @@ public:
 	bool m_Valid = false;
 };
 
+TEST(ControlBlockTest, Access) {
+	ptr_control_block* block = ptr_control_block::create();
+	ControlBlockAccess* access = (ControlBlockAccess*)block;
+
+	EXPECT_EQ(1, access->m_StrongReferenceCount);
+	EXPECT_EQ(1, access->m_WeakReferenceCount);
+	EXPECT_EQ(true, access->m_Valid);
+
+	delete access;
+}
+
 TEST(ControlBlockTest, Create) {
 	ptr_control_block* block = ptr_control_block::create();
 	ControlBlockAccess* access = (ControlBlockAccess*)block;
@@ -28,7 +39,7 @@ TEST(ControlBlockTest, ReleaseStrong) {
 	bool deleted0 = ptr_control_block::releaseStrong(block0);
 	EXPECT_EQ(true, deleted0);
 
-	ptr_control_block* block1 = ptr_control_block::create();					// StrongRefCounter = 1
+	ptr_control_block* block1 = ptr_control_block::create();		// StrongRefCounter = 1
 	ControlBlockAccess* access1 = (ControlBlockAccess*)block1;
 	EXPECT_EQ(1, access1->m_StrongReferenceCount);
 	EXPECT_EQ(1, access1->m_WeakReferenceCount);
