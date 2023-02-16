@@ -7,4 +7,7 @@
 #define TEST
 
 #include "gtest/gtest.h"
-#include "JupiterMemory.h"
+#include "JupiterPointers.h"
+#include "JupiterAllocator.h"
+
+#include <cstdio>

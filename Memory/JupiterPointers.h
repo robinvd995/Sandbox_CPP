@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 
-typedef int uint;
+typedef unsigned int uint;
 
 // in case of a situation where 1 object owns a pointer and other object grab references to said pointer:
 // The owner is the only class that is allowed to create a control block in this situation
@@ -145,6 +145,8 @@ namespace Jupiter {
 	private:
 		T* m_ReferencedData;
 		ptr_control_block* m_ControlBlock;
+
+		friend class PointerCreator;
 	};
 
 	/// <summary>
@@ -179,9 +181,8 @@ namespace Jupiter {
 
 		// Destructor
 		~ptr_owner() {
-			// Release the reference to this pointer object, resulting in deleting the data controlled by this if strong ref = 0
+			// Release the strong reference to this pointer object, resulting in deleting the data controlled by this if strong ref = 0
 			// Calling relrease strong returns true if the strong ref counter is 0, therefore we must delete the data
-			std::cout << "Destructor!" << std::endl;
 			if (ptr_control_block::releaseStrong(m_ControlBlock))
 				delete m_Data;
 		}
@@ -198,7 +199,7 @@ namespace Jupiter {
 		// Delete copy assignment operator, since we don't want to make copies of this pointer
 		ptr_owner<T>& operator=(ptr_owner<T>&) = delete;
 
-		// Operator used to acces the raw pointer data
+		// Operator used to acces the data
 		T* operator->() const { return m_Data; }
 
 	private:
@@ -214,6 +215,67 @@ namespace Jupiter {
 	/// <typeparam name="T"></typeparam>
 	template<typename T>
 	class ptr_shared {
+
+	private:
+		// Argument constructor, only constructor allowed to create a control block
+		ptr_shared(T* data) : m_SharedData(data) {
+			m_ControlBlock = ptr_control_block::create();
+		}
+
+	public:
+		// Default constructor, initializes both data and control block to nullptr
+		ptr_shared() : m_SharedData(nullptr), m_ControlBlock(nullptr) {}
+
+		// Copy constructor, increment strong ref count
+		ptr_shared(const ptr_shared<T>& other) : m_SharedData(other.m_SharedData), m_ControlBlock(other.m_ControlBlock) {
+			ptr_control_block::incrementStrong(m_ControlBlock);
+		}
+
+		// Move constructor, increment strong ref count
+		ptr_shared(ptr_shared<T>&& other) : m_SharedData(std::move(other.m_SharedData)), m_ControlBlock(std::move(other.m_ConstrolBlock)) {
+			ptr_control_block::incrementStrong(m_ControlBlock);
+		}
+
+		// Destructor, release strong ref and delete data when strong ref count = 0;
+		~ptr_shared() {
+			if (ptr_control_block::releaseStrong(m_ControlBlock))
+				delete m_SharedData;
+		}
+
+		// Copy assignment operator, increment strong ref count
+		ptr_shared<T>& operator=(ptr_shared<T>& other) {
+			// Copy the data
+			m_SharedData = other.m_SharedData;
+			m_ControlBlock = other.m_ControlBlock;
+
+			// Increment strong ref count
+			ptr_control_block::incrementStrong(m_ControlBlock);
+
+			// Return dereferenced this
+			return *this;
+		}
+
+		// Move assignment operator, increment strong ref count
+		ptr_shared<T>& operator=(ptr_shared<T>&& other) {
+			// Move the data
+			m_SharedData = std::move(other.m_SharedData);
+			m_ControlBlock = std::move(other.m_ControlBlock);
+
+			// Increment strong ref count
+			ptr_control_block::incrementStrong(m_ControlBlock);
+
+			// Return dereferenced this
+			return *this;
+		}
+
+		// Operator used to access the data
+		T* operator->() const { return m_SharedData; }
+
+	private:
+		T* m_SharedData;
+		ptr_control_block* m_ControlBlock;
+
+		friend class PointerCreator;
 
 	};
 
@@ -232,9 +294,7 @@ namespace Jupiter {
 		PointerCreator& operator=(PointerCreator&&) = delete;	// Delete move assignment operator
 
 	public:
-		/// <summary>
-		/// 
-		/// </summary>
+
 		template<typename T, typename ...Args>
 		static ptr_owner<T> createPtrOwner(Args&&... args) {
 			T* data = new T(std::forward<Args>(args)...);
@@ -244,26 +304,14 @@ namespace Jupiter {
 		template<typename T, typename ...Args>
 		static ptr_shared<T> createPtrShared(Args&&... args) {
 			T* data = new T(std::forward<Args>(args)...);
-			return ptr_shared<T>();
+			return ptr_shared<T>(data);
 		}
 
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="ptr"></param>
-		/// <returns></returns>
 		template<typename T>
 		static ptr_reference<T> grabPtrReference(ptr_owner<T> ptr) {
 			return ptr_reference<T>(ptr.m_Data, ptr.m_ControlBlock);
 		}
 
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="ptr"></param>
-		/// <returns></returns>
 		template<typename T>
 		static ptr_reference<T> grabPtrReference(ptr_shared<T> ptr) {
 			return ptr_reference<T>(ptr.m_Data, ptr.m_ControlBlock);

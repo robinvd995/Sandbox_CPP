@@ -19,6 +19,9 @@ public:
 	~Foo() { std::cout << "Foo Destructor!" << std::endl; }
 };
 
+/// <summary>
+/// Class with the same data template as ptr_control_block used to access its private members
+/// </summary>
 class ControlBlockAccess {
 
 public:
@@ -27,6 +30,9 @@ public:
 	bool m_Valid = false;
 };
 
+/// <summary>
+/// Class with the same data template as ptr_owner used to access its private members
+/// </summary>
 template<typename T>
 class PointerOwnerAccess {
 
