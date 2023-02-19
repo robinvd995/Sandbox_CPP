@@ -15,31 +15,50 @@ namespace Jupiter {
 	typedef short					int16;		// 16 bit integer
 	typedef char					int8;		// 8 bit integer
 
+	/// <summary>
+	/// Namespace containing functions to do with pointers
+	/// </summary>
 	namespace pointer_functions {
 
-		inline uint8 calc_forward_alignment_adjustment(void* ptr, uint8 alignment) {
-			uint8 alignmentMask = alignment - 1;
-			uintptr_t address = reinterpret_cast<uintptr_t>(ptr);
-			uint8 adjustment = alignment - (address & alignmentMask);
-//			if (adjustment == alignment) return 0;
-			return adjustment;
-		}
+		/// <summary>
+		/// Calculates the adjustment needed to forward align a given memory address
+		/// </summary>
+		/// <param name="ptr">The memory address</param>
+		/// <param name="alignment">The alignment value</param>
+		/// <returns>The adjustment the given memory address need to be moved forward to be aligned</returns>
+		inline uint8 calc_forward_alignment_adjustment(void* ptr, uint8 alignment);
 
-		inline void* add(void* ptr, size_t x) {
-			return (void*)(reinterpret_cast<uintptr_t>(ptr) + x);
-		}
+		/// <summary>
+		/// Calculates a new memory address by shifting another memory address forward by x amount of bytes
+		/// </summary>
+		/// <param name="ptr">The memory address needed to be shifted</param>
+		/// <param name="x">the amount of bytes to be shifted</param>
+		/// <returns>the shifted memory address</returns>
+		inline void* shift_forward(void* ptr, size_t x);
 
-		inline const void* add(const void* ptr, size_t x) {
-			return (const void*)(reinterpret_cast<uintptr_t>(ptr) + x);
-		}
+		/// <summary>
+		/// Calculates a new memory address by shifting another memory address forward by x amount of bytes
+		/// </summary>
+		/// <param name="ptr">The memory address needed to be shifted</param>
+		/// <param name="x">the amount of bytes to be shifted</param>
+		/// <returns>the shifted memory address as a const</returns>
+		inline const void* shift_forward(const void* ptr, size_t x);
 
-		inline void* subtract(void* ptr, size_t x) {
-			return (void*)(reinterpret_cast<uintptr_t>(ptr) - x);
-		}
+		/// <summary>
+		/// Calculates a new memory address by shifting another memory address backward by x amount of bytes
+		/// </summary>
+		/// <param name="ptr">The memory address needed to be shifted</param>
+		/// <param name="x">the amount of bytes to be shifted</param>
+		/// <returns>the shifted memory address</returns>
+		inline void* shift_back(void* ptr, size_t x);
 
-		inline const void* subtract(const void* ptr, size_t x) {
-			return (const void*)(reinterpret_cast<uintptr_t>(ptr) - x);
-		}
+		/// <summary>
+		/// Calculates a new memory address by shifting another memory address backward by x amount of bytes
+		/// </summary>
+		/// <param name="ptr">The memory address needed to be shifted</param>
+		/// <param name="x">the amount of bytes to be shifted</param>
+		/// <returns>the shifted memory address as a const</returns>
+		inline const void* shift_back(const void* ptr, size_t x);
 	}
 
 	/// <summary>
@@ -58,9 +77,13 @@ namespace Jupiter {
 		virtual void deallocate(void* p, size_t size) = 0;
 	};
 
+	/// <summary>
+	/// Class that allocates memory in a stack like fashion, the total memory block is allocated on instantiation.
+	/// Therefore all the allocation calls are static
+	/// </summary>
 	class StackAllocator : public IAllocator {
 
-		typedef size_t stack_marker;
+		typedef void* stack_marker;			// Typedef to differntiate between a normal void* and a void* used as a stack marker
 
 	public:
 		StackAllocator() = default;
@@ -77,7 +100,14 @@ namespace Jupiter {
 		virtual void deallocate(void* p, size_t size) override;					// Throws exception, cannot deallocate on a stack!
 
 		/// <summary>
-		/// Marks the current point in the stack
+		/// Marks the current point in the stack.
+		/// Allocates a stack marker in the stack block, this effectivly snapshots some of the variables the allocator keeps track off.
+		/// 
+		/// ???
+		/// Another way of doing it would be to keep an additional block of memory and allocate markers there.
+		/// Could also use vectors if dynamic allocation is fine, or just reserve
+		/// Allocating a "stack marker" in the stack seems to be the most clean, since it doesnt require any additional allocations and barely 
+		/// takes up memory. If memory continuation is an issue this needs to be changed
 		/// </summary>
 		/// <returns></returns>
 		stack_marker mark();
@@ -92,7 +122,7 @@ namespace Jupiter {
 
 		/// <summary>
 		/// Clears the stack deallocating all memory
-		/// This effectivly just sets the top of the stack equal to the start
+		/// This effectivly just sets the top of the stack equal to the start and sets the used memory and allocations to zero
 		/// </summary>
 		void clear();
 
@@ -105,15 +135,17 @@ namespace Jupiter {
 		size_t m_Allocations;			// The total number of allocations this allocator has made
 	};
 
-	class LinearAllocator {};
+	/// <summary>
+	/// A memory allocator that works similar to a heap
+	/// </summary>
+	class BlockAllocator : public IAllocator {};
 
-	class PoolAllocator {};
-
-	class DoubleStackAllocator {};
-
-	class ListAllocator {};
-
-	class DynamicListAllocator {};
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <typeparam name="T"></typeparam>
+	template<typename T>
+	class PoolAllocator : public IAllocator {};
 
 //	class AllocatorBase {
 //
